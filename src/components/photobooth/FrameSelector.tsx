@@ -36,9 +36,9 @@ export function FrameSelector({ frameOptions, onSelect }: FrameSelectorProps) {
       
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
         {frameOptions.map((frame, index) => (
-          <Card 
+          <div 
             key={index}
-            className={`overflow-hidden cursor-pointer transition-all hover:shadow-md ${
+            className={`overflow-hidden cursor-pointer transition-all hover:shadow-md bg-card text-card-foreground flex flex-col gap-6 rounded-xl border py-6 shadow-sm ${
               selectedFrameIndex === index 
                 ? "ring-2 ring-blue-600 border-blue-600" 
                 : "hover:border-gray-300 dark:hover:border-gray-600"
@@ -80,7 +80,7 @@ export function FrameSelector({ frameOptions, onSelect }: FrameSelectorProps) {
                 </p>
               </div>
             </CardContent>
-          </Card>
+          </div>
         ))}
       </div>
       
