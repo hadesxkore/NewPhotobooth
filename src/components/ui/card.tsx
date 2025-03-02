@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils"
 interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
   className?: string;
   children?: React.ReactNode;
-  onClick?: () => void;
+  onClick?: (...args: any[]) => void;
 }
 
 function Card({ className, ...props }: CardProps) {
