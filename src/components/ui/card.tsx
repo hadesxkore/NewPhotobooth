@@ -3,13 +3,15 @@ import * as React from "react"
 import { cn } from "@/lib/utils"
 
 // Define a custom interface that explicitly includes className and children
-interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
+interface CardProps {
   className?: string;
   children?: React.ReactNode;
-  onClick?: (...args: any[]) => void;
+  onClick?: any;
+  // Include any other HTML div attributes
+  [key: string]: any;
 }
 
-function Card({ className, ...props }: CardProps) {
+function Card({ className, children, onClick, ...props }: CardProps) {
   return (
     <div
       data-slot="card"
@@ -17,8 +19,11 @@ function Card({ className, ...props }: CardProps) {
         "bg-card text-card-foreground flex flex-col gap-6 rounded-xl border py-6 shadow-sm",
         className
       )}
+      onClick={onClick}
       {...props}
-    />
+    >
+      {children}
+    </div>
   )
 }
 
