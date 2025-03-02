@@ -142,3 +142,5 @@
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
 }
+
+@import "../styles/filters.css";

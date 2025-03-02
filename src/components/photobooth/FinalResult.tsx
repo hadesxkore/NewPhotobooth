@@ -6,16 +6,18 @@ import { toPng } from "html-to-image";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Slider } from "@/components/ui/slider";
-import { type FrameConfig } from "./Photobooth";
-import { Download, RotateCcw, Palette, Maximize, Share2, Sticker as StickerIcon } from "lucide-react";
+import { type FrameConfig, PhotoData } from "./Photobooth";
+import { Download, RotateCcw, Palette, Maximize, Share2, Sticker as StickerIcon, Edit } from "lucide-react";
 import { StickerSelector } from "./StickerSelector";
 import { DraggableSticker } from "./DraggableSticker";
 import { Sticker } from "@/data/stickers";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import FilteredImage from "./FilteredImage";
+import { FILTERS } from "./FilterSelector";
 
 interface FinalResultProps {
   frameConfig: FrameConfig;
-  photos: string[];
+  photos: PhotoData[];
   frameColor: string;
   onColorChange: (color: string) => void;
   onReset: () => void;
@@ -61,6 +63,8 @@ export function FinalResult({
   const [dateFormat, setDateFormat] = useState<'short' | 'long'>('short');
   const [imageWidth, setImageWidth] = useState(100); // Default width percentage
   const currentDate = new Date();
+  const [editingPhotoIndex, setEditingPhotoIndex] = useState<number | null>(null);
+  const [updatedPhotos, setUpdatedPhotos] = useState<PhotoData[]>(photos);
   
   // Preload stickers with CORS when they're added
   useEffect(() => {
@@ -148,6 +152,8 @@ export function FinalResult({
         const photoPromises = Array.from(photoElements).map((img, index) => {
           return new Promise<void>((resolve) => {
             const imgEl = img as HTMLImageElement;
+            // Get the filter for this specific photo
+            const photoFilter = updatedPhotos[index]?.filter || "none";
             
             if (imgEl.complete) {
               const imgRect = imgEl.getBoundingClientRect();
@@ -181,7 +187,14 @@ export function FinalResult({
               }
               
               try {
+                // Draw the image to the canvas
                 ctx.drawImage(imgEl, relativeRect.left, relativeRect.top, relativeRect.width, relativeRect.height);
+                
+                // Apply filter to just this photo area using the photo's specific filter
+                if (photoFilter && photoFilter !== 'none') {
+                  // Apply filter only to this photo's area by getting just that region's image data
+                  applyFilterToContext(ctx, photoFilter, relativeRect.left, relativeRect.top, relativeRect.width, relativeRect.height);
+                }
               } catch (e) {
                 console.error("Error drawing photo to canvas:", e);
               }
@@ -219,7 +232,14 @@ export function FinalResult({
                 }
                 
                 try {
+                  // Draw the image to the canvas
                   ctx.drawImage(imgEl, relativeRect.left, relativeRect.top, relativeRect.width, relativeRect.height);
+                  
+                  // Apply filter to just this photo area using the photo's specific filter
+                  if (photoFilter && photoFilter !== 'none') {
+                    // Apply filter only to this photo's area by getting just that region's image data
+                    applyFilterToContext(ctx, photoFilter, relativeRect.left, relativeRect.top, relativeRect.width, relativeRect.height);
+                  }
                 } catch (e) {
                   console.error("Error drawing photo to canvas:", e);
                 }
@@ -232,57 +252,33 @@ export function FinalResult({
         
         await Promise.all(photoPromises);
         
-        // Draw stickers separately to ensure they're included
-        const stickerElements = resultRef.current.querySelectorAll('.photobooth-sticker');
-        const stickerPromises = Array.from(stickerElements).map(stickerEl => {
+        // Draw stickers
+        const stickerPromises = placedStickers.map(placedSticker => {
           return new Promise<void>((resolve) => {
-            const img = stickerEl.querySelector('.sticker-img') as HTMLImageElement;
-            if (!img) {
-              resolve();
-              return;
-            }
+            const img = new Image();
+            img.crossOrigin = "anonymous";
+            img.src = placedSticker.sticker.url;
             
-            // Ensure crossOrigin is set
-            if (img.crossOrigin !== 'anonymous') {
-              img.crossOrigin = 'anonymous';
-              // Force reload if needed
-              const originalSrc = img.src;
-              img.src = '';
-              img.src = originalSrc;
-            }
-            
-            if (img.complete) {
+            img.onload = () => {
               try {
-                // For horizontal layouts, adjust sticker positions
-                if (frameConfig.columns > frameConfig.rows) {
-                  const widthFactor = imageWidth / 100;
-                  drawStickerToCanvasWithWidthAdjustment(stickerEl as HTMLElement, img, ctx, rect, widthFactor);
-                } else {
-                  drawStickerToCanvas(stickerEl as HTMLElement, img, ctx, rect);
+                const stickerRect = document.getElementById(placedSticker.id)?.getBoundingClientRect();
+                if (stickerRect) {
+                  const relativeRect = {
+                    left: stickerRect.left - rect.left,
+                    top: stickerRect.top - rect.top,
+                    width: stickerRect.width,
+                    height: stickerRect.height
+                  };
+                  
+                  // Draw sticker to canvas
+                  ctx.drawImage(img, relativeRect.left, relativeRect.top, relativeRect.width, relativeRect.height);
                 }
               } catch (e) {
                 console.error("Error drawing sticker to canvas:", e);
-                // Continue even if sticker fails
               }
               resolve();
-            } else {
-              img.onload = () => {
-                try {
-                  // For horizontal layouts, adjust sticker positions
-                  if (frameConfig.columns > frameConfig.rows) {
-                    const widthFactor = imageWidth / 100;
-                    drawStickerToCanvasWithWidthAdjustment(stickerEl as HTMLElement, img, ctx, rect, widthFactor);
-                  } else {
-                    drawStickerToCanvas(stickerEl as HTMLElement, img, ctx, rect);
-                  }
-                } catch (e) {
-                  console.error("Error drawing sticker to canvas:", e);
-                  // Continue even if sticker fails
-                }
-                resolve();
-              };
-              img.onerror = () => resolve(); // Continue even if image fails
-            }
+            };
+            img.onerror = () => resolve(); // Continue even if sticker fails
           });
         });
         
@@ -328,6 +324,8 @@ export function FinalResult({
       // Use a longer delay to ensure all stickers are rendered properly
       await new Promise(resolve => setTimeout(resolve, 2000));
       
+      // Note: For the html-to-image approach, filters are already applied in the DOM
+      // through the FilteredImage component, so we don't need to apply them manually
       const dataUrl = await toPng(resultRef.current, { 
         quality: 0.95,
         // Skip nodes that have failed to load (like images with CORS issues)
@@ -520,9 +518,11 @@ export function FinalResult({
         
         // Draw the photos
         const photoElements = resultRef.current.querySelectorAll('.rounded-sm img');
-        const photoPromises = Array.from(photoElements).map(img => {
+        const photoPromises = Array.from(photoElements).map((img, index) => {
           return new Promise<void>((resolve) => {
             const imgEl = img as HTMLImageElement;
+            // Get the filter for this specific photo
+            const photoFilter = updatedPhotos[index]?.filter || "none";
             
             if (imgEl.complete) {
               const imgRect = imgEl.getBoundingClientRect();
@@ -534,7 +534,14 @@ export function FinalResult({
               };
               
               try {
+                // Draw the image to the canvas
                 ctx.drawImage(imgEl, relativeRect.left, relativeRect.top, relativeRect.width, relativeRect.height);
+                
+                // Apply filter to just this photo area using the photo's specific filter
+                if (photoFilter && photoFilter !== 'none') {
+                  // Apply filter only to this photo's area by getting just that region's image data
+                  applyFilterToContext(ctx, photoFilter, relativeRect.left, relativeRect.top, relativeRect.width, relativeRect.height);
+                }
               } catch (e) {
                 console.error("Error drawing photo to canvas:", e);
               }
@@ -550,7 +557,14 @@ export function FinalResult({
                 };
                 
                 try {
+                  // Draw the image to the canvas
                   ctx.drawImage(imgEl, relativeRect.left, relativeRect.top, relativeRect.width, relativeRect.height);
+                  
+                  // Apply filter to just this photo area using the photo's specific filter
+                  if (photoFilter && photoFilter !== 'none') {
+                    // Apply filter only to this photo's area by getting just that region's image data
+                    applyFilterToContext(ctx, photoFilter, relativeRect.left, relativeRect.top, relativeRect.width, relativeRect.height);
+                  }
                 } catch (e) {
                   console.error("Error drawing photo to canvas:", e);
                 }
@@ -563,57 +577,33 @@ export function FinalResult({
         
         await Promise.all(photoPromises);
         
-        // Draw stickers separately to ensure they're included
-        const stickerElements = resultRef.current.querySelectorAll('.photobooth-sticker');
-        const stickerPromises = Array.from(stickerElements).map(stickerEl => {
+        // Draw stickers
+        const stickerPromises = placedStickers.map(placedSticker => {
           return new Promise<void>((resolve) => {
-            const img = stickerEl.querySelector('.sticker-img') as HTMLImageElement;
-            if (!img) {
-              resolve();
-              return;
-            }
+            const img = new Image();
+            img.crossOrigin = "anonymous";
+            img.src = placedSticker.sticker.url;
             
-            // Ensure crossOrigin is set
-            if (img.crossOrigin !== 'anonymous') {
-              img.crossOrigin = 'anonymous';
-              // Force reload if needed
-              const originalSrc = img.src;
-              img.src = '';
-              img.src = originalSrc;
-            }
-            
-            if (img.complete) {
+            img.onload = () => {
               try {
-                // For horizontal layouts, adjust sticker positions
-                if (frameConfig.columns > frameConfig.rows) {
-                  const widthFactor = imageWidth / 100;
-                  drawStickerToCanvasWithWidthAdjustment(stickerEl as HTMLElement, img, ctx, rect, widthFactor);
-                } else {
-                  drawStickerToCanvas(stickerEl as HTMLElement, img, ctx, rect);
+                const stickerRect = document.getElementById(placedSticker.id)?.getBoundingClientRect();
+                if (stickerRect) {
+                  const relativeRect = {
+                    left: stickerRect.left - rect.left,
+                    top: stickerRect.top - rect.top,
+                    width: stickerRect.width,
+                    height: stickerRect.height
+                  };
+                  
+                  // Draw sticker to canvas
+                  ctx.drawImage(img, relativeRect.left, relativeRect.top, relativeRect.width, relativeRect.height);
                 }
               } catch (e) {
                 console.error("Error drawing sticker to canvas:", e);
-                // Continue even if sticker fails
               }
               resolve();
-            } else {
-              img.onload = () => {
-                try {
-                  // For horizontal layouts, adjust sticker positions
-                  if (frameConfig.columns > frameConfig.rows) {
-                    const widthFactor = imageWidth / 100;
-                    drawStickerToCanvasWithWidthAdjustment(stickerEl as HTMLElement, img, ctx, rect, widthFactor);
-                  } else {
-                    drawStickerToCanvas(stickerEl as HTMLElement, img, ctx, rect);
-                  }
-                } catch (e) {
-                  console.error("Error drawing sticker to canvas:", e);
-                  // Continue even if sticker fails
-                }
-                resolve();
-              };
-              img.onerror = () => resolve(); // Continue even if image fails
-            }
+            };
+            img.onerror = () => resolve(); // Continue even if sticker fails
           });
         });
         
@@ -749,6 +739,168 @@ export function FinalResult({
     return currentDate.toLocaleDateString(undefined, options);
   };
 
+  // Find the function that applies filters to the canvas
+  // Add a new function to apply filters to the canvas context
+
+  // Update the applyFilterToContext function to work with specific regions
+  const applyFilterToContext = (
+    ctx: CanvasRenderingContext2D, 
+    filterId: string, 
+    x: number, 
+    y: number, 
+    width: number, 
+    height: number
+  ) => {
+    if (!filterId || filterId === 'none') return;
+    
+    // Get image data only from the specific photo area
+    const imageData = ctx.getImageData(x, y, width, height);
+    const data = imageData.data;
+    
+    switch(filterId) {
+      case "grayscale":
+        for (let i = 0; i < data.length; i += 4) {
+          const avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
+          data[i] = avg; // red
+          data[i + 1] = avg; // green
+          data[i + 2] = avg; // blue
+        }
+        break;
+      case "sepia":
+        for (let i = 0; i < data.length; i += 4) {
+          const r = data[i];
+          const g = data[i + 1];
+          const b = data[i + 2];
+          
+          data[i] = Math.min(255, (r * 0.393) + (g * 0.769) + (b * 0.189));
+          data[i + 1] = Math.min(255, (r * 0.349) + (g * 0.686) + (b * 0.168));
+          data[i + 2] = Math.min(255, (r * 0.272) + (g * 0.534) + (b * 0.131));
+        }
+        break;
+      case "vintage":
+        for (let i = 0; i < data.length; i += 4) {
+          const r = data[i];
+          const g = data[i + 1];
+          const b = data[i + 2];
+          
+          // Sepia effect (lighter than full sepia)
+          data[i] = Math.min(255, (r * 0.35) + (g * 0.75) + (b * 0.18));
+          data[i + 1] = Math.min(255, (r * 0.31) + (g * 0.65) + (b * 0.15));
+          data[i + 2] = Math.min(255, (r * 0.27) + (g * 0.53) + (b * 0.13));
+          
+          // Increase contrast
+          data[i] = Math.min(255, data[i] * 1.2);
+          data[i + 1] = Math.min(255, data[i + 1] * 1.2);
+          data[i + 2] = Math.min(255, data[i + 2] * 1.2);
+        }
+        break;
+      case "contrast":
+        const factor = 1.5; // Contrast factor
+        for (let i = 0; i < data.length; i += 4) {
+          data[i] = Math.min(255, Math.max(0, factor * (data[i] - 128) + 128));
+          data[i + 1] = Math.min(255, Math.max(0, factor * (data[i + 1] - 128) + 128));
+          data[i + 2] = Math.min(255, Math.max(0, factor * (data[i + 2] - 128) + 128));
+        }
+        break;
+      case "brightness":
+        const brightnessValue = 50; // Brightness increase
+        for (let i = 0; i < data.length; i += 4) {
+          data[i] = Math.min(255, data[i] + brightnessValue);
+          data[i + 1] = Math.min(255, data[i + 1] + brightnessValue);
+          data[i + 2] = Math.min(255, data[i + 2] + brightnessValue);
+        }
+        break;
+      case "invert":
+        for (let i = 0; i < data.length; i += 4) {
+          data[i] = 255 - data[i];
+          data[i + 1] = 255 - data[i + 1];
+          data[i + 2] = 255 - data[i + 2];
+        }
+        break;
+      case "blur":
+        // For blur, we'll use a simpler box blur algorithm that's more efficient
+        const blurRadius = 3;
+        const blurredData = new Uint8ClampedArray(data.length);
+        
+        // Copy original data to blurredData
+        for (let i = 0; i < data.length; i++) {
+          blurredData[i] = data[i];
+        }
+        
+        // Apply a simple box blur
+        for (let y = blurRadius; y < height - blurRadius; y++) {
+          for (let x = blurRadius; x < width - blurRadius; x++) {
+            let r = 0, g = 0, b = 0;
+            let count = 0;
+            
+            // Sample the surrounding pixels
+            for (let ky = -blurRadius; ky <= blurRadius; ky++) {
+              for (let kx = -blurRadius; kx <= blurRadius; kx++) {
+                const idx = ((y + ky) * width + (x + kx)) * 4;
+                if (idx >= 0 && idx < data.length - 3) {
+                  r += data[idx];
+                  g += data[idx + 1];
+                  b += data[idx + 2];
+                  count++;
+                }
+              }
+            }
+            
+            // Calculate average and set the pixel
+            const idx = (y * width + x) * 4;
+            if (count > 0 && idx >= 0 && idx < blurredData.length - 3) {
+              blurredData[idx] = r / count;
+              blurredData[idx + 1] = g / count;
+              blurredData[idx + 2] = b / count;
+            }
+          }
+        }
+        
+        // Copy blurred data back to original
+        for (let i = 0; i < data.length; i++) {
+          data[i] = blurredData[i];
+        }
+        break;
+    }
+    
+    // Put the modified image data back to the canvas, but only for the specific region
+    ctx.putImageData(imageData, x, y);
+  };
+
+  // Function to update a photo's filter
+  const handleUpdatePhotoFilter = (index: number, filterId: string) => {
+    const newPhotos = [...updatedPhotos];
+    newPhotos[index] = { ...newPhotos[index], filter: filterId };
+    setUpdatedPhotos(newPhotos);
+  };
+
+  // Simple filter selector component
+  const FilterSelector = ({ selectedFilter, onSelectFilter }: { selectedFilter: string, onSelectFilter: (filterId: string) => void }) => {
+    return (
+      <div className="grid grid-cols-4 gap-2">
+        {FILTERS.map((filter) => (
+          <button
+            key={filter.id}
+            onClick={() => onSelectFilter(filter.id)}
+            className={`p-2 rounded-md transition-all ${
+              selectedFilter === filter.id 
+                ? 'bg-blue-100 dark:bg-blue-900/50 border-2 border-blue-500' 
+                : 'bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700'
+            }`}
+            aria-label={`Apply ${filter.name} filter`}
+          >
+            <div className="text-xs font-medium text-center">{filter.name}</div>
+          </button>
+        ))}
+      </div>
+    );
+  };
+
+  // Update photos when props change
+  useEffect(() => {
+    setUpdatedPhotos(photos);
+  }, [photos]);
+
   return (
     <>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
@@ -774,19 +926,29 @@ export function FinalResult({
                       aspectRatio: getOptimalAspectRatio(),
                     }}
                   >
-                    {photos.map((photo, index) => (
+                    {updatedPhotos.map((photo, index) => (
                       <motion.div
                         key={index}
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         transition={{ delay: index * 0.1 }}
-                        className="relative rounded-sm overflow-hidden"
+                        className="relative rounded-sm overflow-hidden group"
                       >
-                        <img 
-                          src={photo} 
-                          alt={`Photo ${index + 1}`} 
+                        <FilteredImage
+                          src={photo.dataUrl}
+                          filterId={photo.filter}
                           className="w-full h-full object-cover"
+                          alt={`Photo ${index + 1}`}
                         />
+                        
+                        {/* Edit filter button */}
+                        <button
+                          onClick={() => setEditingPhotoIndex(index)}
+                          className="absolute top-2 right-2 bg-black/50 text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                          aria-label="Edit filter"
+                        >
+                          <Edit className="h-4 w-4" />
+                        </button>
                       </motion.div>
                     ))}
                     
@@ -842,6 +1004,38 @@ export function FinalResult({
               </Button>
             )}
           </div>
+          
+          {/* Filter editor modal */}
+          {editingPhotoIndex !== null && (
+            <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+              <div className="bg-white dark:bg-gray-900 rounded-xl p-6 max-w-md w-full">
+                <h3 className="text-xl font-medium mb-4">Edit Filter</h3>
+                
+                <div className="mb-6">
+                  <FilteredImage
+                    src={updatedPhotos[editingPhotoIndex].dataUrl}
+                    filterId={updatedPhotos[editingPhotoIndex].filter}
+                    className="w-full h-64 object-cover rounded-lg"
+                    alt={`Photo ${editingPhotoIndex + 1}`}
+                  />
+                </div>
+                
+                <FilterSelector
+                  selectedFilter={updatedPhotos[editingPhotoIndex].filter}
+                  onSelectFilter={(filterId) => handleUpdatePhotoFilter(editingPhotoIndex, filterId)}
+                />
+                
+                <div className="flex justify-end mt-6 gap-3">
+                  <Button
+                    variant="outline"
+                    onClick={() => setEditingPhotoIndex(null)}
+                  >
+                    Close
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="space-y-6">
@@ -1007,15 +1201,16 @@ export function FinalResult({
                   aspectRatio: getOptimalAspectRatio(),
                 }}
               >
-                {photos.map((photo, index) => (
+                {updatedPhotos.map((photo, index) => (
                   <div
                     key={index}
                     className="relative rounded-sm overflow-hidden"
                   >
-                    <img 
-                      src={photo} 
-                      alt={`Photo ${index + 1}`} 
+                    <FilteredImage
+                      src={photo.dataUrl}
+                      filterId={photo.filter}
                       className="w-full h-full object-cover"
+                      alt={`Photo ${index + 1}`}
                     />
                   </div>
                 ))}
@@ -1037,10 +1232,11 @@ export function FinalResult({
                       top: `${placedSticker.position.y}px`,
                     }}
                   >
-                    <img 
-                      src={placedSticker.sticker.url} 
-                      alt="Sticker"
+                    <FilteredImage
+                      src={placedSticker.sticker.url}
+                      filterId="none"
                       className="w-20 h-20 object-contain"
+                      alt="Sticker"
                       crossOrigin="anonymous"
                     />
                   </div>

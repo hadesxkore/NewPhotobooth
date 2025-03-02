@@ -14,6 +14,12 @@ export interface FrameConfig {
   name: string;
 }
 
+// Define a new interface for photo data that includes filter information
+export interface PhotoData {
+  dataUrl: string;
+  filter: string;
+}
+
 const FRAME_OPTIONS: FrameConfig[] = [
   { rows: 1, columns: 1, name: "Single" },
   { rows: 2, columns: 2, name: "Grid (2×2)" },
@@ -30,9 +36,10 @@ type PhotoboothStep = "frame-selection" | "photo-capture" | "final-result";
 export function Photobooth() {
   const [currentStep, setCurrentStep] = useState<PhotoboothStep>("frame-selection");
   const [selectedFrame, setSelectedFrame] = useState<FrameConfig>(FRAME_OPTIONS[0]);
-  const [photos, setPhotos] = useState<string[]>([]);
+  const [photos, setPhotos] = useState<PhotoData[]>([]);
   const [frameColor, setFrameColor] = useState("#ffffff");
   const [isMirrored, setIsMirrored] = useState(true);
+  const [selectedFilter, setSelectedFilter] = useState("none");
 
   const totalPhotosNeeded = selectedFrame.rows * selectedFrame.columns;
   const photosRemaining = totalPhotosNeeded - photos.length;
@@ -42,11 +49,12 @@ export function Photobooth() {
     setCurrentStep("photo-capture");
   };
 
-  const handlePhotoCapture = (photoDataUrl: string) => {
-    const updatedPhotos = [...photos, photoDataUrl];
-    setPhotos(updatedPhotos);
-
-    if (updatedPhotos.length >= totalPhotosNeeded) {
+  const handleCapture = (photo: { dataUrl: string; filter: string }) => {
+    // Store both the dataUrl and the filter
+    setPhotos([...photos, { dataUrl: photo.dataUrl, filter: photo.filter }]);
+    
+    // If we have all the photos we need, move to the result step
+    if (photos.length + 1 >= totalPhotosNeeded) {
       setCurrentStep("final-result");
     }
   };
@@ -61,7 +69,7 @@ export function Photobooth() {
   };
 
   return (
-    <div className="container max-w-6xl mx-auto px-4 py-8">
+    <div className="container mx-auto px-4 py-8 max-w-5xl">
       <header className="text-center mb-8">
         <h1 className="text-4xl font-bold mb-2 bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
           Online Photobooth
@@ -120,11 +128,18 @@ export function Photobooth() {
               </div>
             </div>
 
-            <CameraCapture 
-              onCapture={handlePhotoCapture} 
-              isMirrored={isMirrored}
-              onToggleMirror={handleToggleMirror}
-            />
+            <div className="mb-8">
+              <CameraCapture 
+                onCapture={handleCapture}
+                isMirrored={isMirrored}
+                onToggleMirror={handleToggleMirror}
+              />
+              <div className="mt-4 text-center">
+                <p className="text-gray-600 dark:text-gray-400">
+                  Photo {photos.length + 1} of {totalPhotosNeeded}
+                </p>
+              </div>
+            </div>
 
             <div className="flex justify-between mt-6">
               <Button
