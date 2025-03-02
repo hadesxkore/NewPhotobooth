@@ -27,53 +27,63 @@ function Card({ className, children, onClick, ...props }: CardProps) {
   )
 }
 
-function CardHeader({ className, ...props }: CardProps) {
+function CardHeader({ className, children, ...props }: CardProps) {
   return (
     <div
       data-slot="card-header"
       className={cn("flex flex-col gap-1.5 px-6", className)}
       {...props}
-    />
+    >
+      {children}
+    </div>
   )
 }
 
-function CardTitle({ className, ...props }: CardProps) {
+function CardTitle({ className, children, ...props }: CardProps) {
   return (
     <div
       data-slot="card-title"
       className={cn("leading-none font-semibold", className)}
       {...props}
-    />
+    >
+      {children}
+    </div>
   )
 }
 
-function CardDescription({ className, ...props }: CardProps) {
+function CardDescription({ className, children, ...props }: CardProps) {
   return (
     <div
       data-slot="card-description"
       className={cn("text-muted-foreground text-sm", className)}
       {...props}
-    />
+    >
+      {children}
+    </div>
   )
 }
 
-function CardContent({ className, ...props }: CardProps) {
+function CardContent({ className, children, ...props }: CardProps) {
   return (
     <div
       data-slot="card-content"
       className={cn("px-6", className)}
       {...props}
-    />
+    >
+      {children}
+    </div>
   )
 }
 
-function CardFooter({ className, ...props }: CardProps) {
+function CardFooter({ className, children, ...props }: CardProps) {
   return (
     <div
       data-slot="card-footer"
       className={cn("flex items-center px-6", className)}
       {...props}
-    />
+    >
+      {children}
+    </div>
   )
 }
 
